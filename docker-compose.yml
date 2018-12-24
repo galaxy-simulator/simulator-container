@@ -1,0 +1,7 @@
+version: '3'
+
+services:
+  simulate:
+    build: .
+    ports:
+      - "8345:8345"
