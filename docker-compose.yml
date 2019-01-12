@@ -4,4 +4,4 @@ services:
   simulate:
     build: .
     ports:
-      - "8345:8345"
+      - "80:80"

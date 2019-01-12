@@ -36,9 +36,16 @@ func calcNewPos(w http.ResponseWriter, r *http.Request) {
 	// get the post parameters
 	x, _ := strconv.ParseFloat(r.PostFormValue("x"), 64)
 	y, _ := strconv.ParseFloat(r.PostFormValue("y"), 64)
-	z, _ := strconv.ParseFloat(r.PostFormValue("z"), 64)
+	vx, _ := strconv.ParseFloat(r.PostFormValue("vx"), 64)
+	vy, _ := strconv.ParseFloat(r.PostFormValue("vy"), 64)
+	m, _ := strconv.ParseFloat(r.PostFormValue("m"), 64)
 
-	log.Printf("(%f, %f, %f)", x, y, z)
+	log.Println("Simulator container calcNewPos git these values: ")
+	log.Printf("(x: %f, y: %f, vx: %f, vy: %f, m: %f)\n", x, y, vx, vy, m)
+}
+
+func indexHandler(w http.ResponseWriter, r *http.Request) {
+	_, _ = fmt.Fprintf(w, "Hello, this is the simu container!")
 }
 
 func main() {
@@ -49,5 +56,8 @@ func main() {
 	// this is an endpoint searching for a star and calculating the forces acting inbetween it and all the other star
 	// in it's direct range
 	router.HandleFunc("/newpos", calcNewPos).Methods("POST")
-	log.Fatal(http.ListenAndServe(":8345", router))
+
+	router.HandleFunc("/", indexHandler).Methods("GET")
+
+	log.Fatal(http.ListenAndServe(":8002", router))
 }
