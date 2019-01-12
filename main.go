@@ -40,7 +40,7 @@ func calcNewPos(w http.ResponseWriter, r *http.Request) {
 	vy, _ := strconv.ParseFloat(r.PostFormValue("vy"), 64)
 	m, _ := strconv.ParseFloat(r.PostFormValue("m"), 64)
 
-	log.Println("Simulator container calcNewPos git these values: ")
+	log.Println("Simulator container calcNewPos got these values: ")
 	log.Printf("(x: %f, y: %f, vx: %f, vy: %f, m: %f)\n", x, y, vx, vy, m)
 }
 
@@ -48,16 +48,37 @@ func indexHandler(w http.ResponseWriter, r *http.Request) {
 	_, _ = fmt.Fprintf(w, "Hello, this is the simu container!")
 }
 
+func calcallforcesHandler(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("The calcallforcesHandler was accessed!")
+
+	vars := mux.Vars(r)
+	treeindex, _ := strconv.ParseInt(vars["treeindex"], 10, 0)
+
+	if r.Method == "GET" {
+		_, _ = fmt.Fprintf(w, "Make a post request to this endpoint to calc some forces!")
+		fmt.Println(treeindex)
+	} else {
+		// get the post parameters
+		x, _ := strconv.ParseFloat(r.PostFormValue("x"), 64)
+		y, _ := strconv.ParseFloat(r.PostFormValue("y"), 64)
+		vx, _ := strconv.ParseFloat(r.PostFormValue("vx"), 64)
+		vy, _ := strconv.ParseFloat(r.PostFormValue("vy"), 64)
+		m, _ := strconv.ParseFloat(r.PostFormValue("m"), 64)
+
+		log.Println("Simulator container calcallforces got these values: ")
+		log.Printf("(x: %f, y: %f, vx: %f, vy: %f, m: %f)\n", x, y, vx, vy, m)
+		_, _ = fmt.Fprintf(w, "calculating forces...")
+		_, _ = fmt.Fprintf(w, "Simu here, calculating the forces acting on the star (%f, %f)", x, y)
+	}
+}
+
 func main() {
 	router := mux.NewRouter()
 
-	router.HandleFunc("/initMassCenter", calcNewPos).Methods("POST")
-
-	// this is an endpoint searching for a star and calculating the forces acting inbetween it and all the other star
-	// in it's direct range
-	router.HandleFunc("/newpos", calcNewPos).Methods("POST")
-
 	router.HandleFunc("/", indexHandler).Methods("GET")
+	router.HandleFunc("/newpos", calcNewPos).Methods("POST")
+	router.HandleFunc("/initMassCenter", calcNewPos).Methods("POST")
+	router.HandleFunc("/calcallforces/{treeindex}", calcallforcesHandler).Methods("GET", "POST")
 
-	log.Fatal(http.ListenAndServe(":8002", router))
+	log.Fatal(http.ListenAndServe(":80", router))
 }

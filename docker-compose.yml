@@ -3,5 +3,3 @@ version: '3'
 services:
   simulate:
     build: .
-    ports:
-      - "80:80"
