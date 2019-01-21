@@ -64,6 +64,12 @@ func indexHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // calcallforcesHandler calculates all the forces acting on a given star
+//
+// 1. read the tree index
+// 2. If the tree is not in the local cache
+// 2.1. Get the tree
+// 3. Calculate all the forces acting the given theta
+// 4. Write the forces to a file
 func calcallforcesHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("The calcallforcesHandler was accessed!")
 
@@ -86,7 +92,7 @@ func calcallforcesHandler(w http.ResponseWriter, r *http.Request) {
 			log.Println("[ ! ] The tree is not in local cache, requesting it from the database")
 
 			// make a http-post request to the databse requesting the tree
-			requesturl := fmt.Sprintf("http://%s/dumptree/%d", os.Getenv("DATABASE"), treeindex)
+			requesturl := fmt.Sprintf("http://%s/dumptree/%d", "db", treeindex)
 			log.Println("[   ] Requesting the tree from the database")
 			resp, err := http.Get(requesturl)
 			if err != nil {
