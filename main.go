@@ -54,7 +54,7 @@ func cache(treeindex int64) {
 	log.Println("[ ! ] The tree is not in local cache, requesting it from the database")
 
 	// make a http-post request to the databse requesting the tree
-	requesturl := fmt.Sprintf("http://db/dumptree/%d", treeindex)
+	requesturl := fmt.Sprintf("http://db.nbg1.emile.space/dumptree/%d", treeindex)
 	log.Println("[   ] Requesting the tree from the database")
 	resp, err := http.Get(requesturl)
 	if err != nil {
@@ -193,7 +193,7 @@ func calcallforces(star structs.Star2D, treeindex int64) {
 func main() {
 	// start a go method pushing the metrics to the manager
 	log.Println("[   ] Starting the metric-pusher")
-	go pushMetrics("http://manager/metrics")
+	go pushMetrics("http://manager.nbg1.emile.space/metrics")
 
-	processstars("http://manager/providestars/0")
+	processstars("http://manager.nbg1.emile.space/providestars/0")
 }
