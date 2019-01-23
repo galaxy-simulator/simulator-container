@@ -5,14 +5,11 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
-	"math/rand"
 	"net/http"
 	"net/url"
 	"os"
 	"strconv"
 	"time"
-
-	"github.com/gorilla/mux"
 
 	"git.darknebu.la/GalaxySimulator/structs"
 )
@@ -21,20 +18,8 @@ var (
 	// store a copy of the tree locally
 	treeArray      []*structs.Node
 	starsProcessed int
+	theta          = 0.1
 )
-
-func nextpos(deltat float64, star structs.Star2D) {
-	// ...
-}
-
-func initMassCenter(w http.ResponseWriter, r *http.Request) {
-	log.Println("[   ] Initializing the Mass Center of all the nodes in the tree")
-
-	// getting the tree index
-	vars := mux.Vars(r)
-	treeindex, _ := strconv.ParseInt(vars["treeindex"], 10, 0)
-	_, _ = fmt.Fprintln(w, treeindex)
-}
 
 // calcNewPos calculates the new position of the star it receives via a POST request
 // TODO: Implement it
@@ -48,117 +33,6 @@ func calcNewPos(w http.ResponseWriter, r *http.Request) {
 
 	log.Println("Simulator container calcNewPos got these values: ")
 	log.Printf("(x: %f, y: %f, vx: %f, vy: %f, m: %f)\n", x, y, vx, vy, m)
-}
-
-// indexHandler returns a simple overview of the available functions
-func indexHandler(w http.ResponseWriter, r *http.Request) {
-	infostring := `Hello, this is the simu container!
-
-/
-/newpos
-/initMassCenter
-/calcallforces/{treeindex} Calculates all the forces acting on a star given via a POST
-/metrics 
-`
-	_, _ = fmt.Fprintf(w, infostring)
-}
-
-// calcallforcesHandler calculates all the forces acting on a given star
-//
-// 1. read the tree index
-// 2. If the tree is not in the local cache
-// 2.1. Get the tree
-// 3. Calculate all the forces acting the given theta
-// 4. Write the forces to a file
-func calcallforcesHandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("The calcallforcesHandler was accessed!")
-
-	vars := mux.Vars(r)
-	treeindex, _ := strconv.ParseInt(vars["treeindex"], 10, 0)
-
-	log.Println("Read the treeindex")
-
-	// if the endpoint was accessed using a GET request, display how to use the endpoint correctly
-	if r.Method == "GET" {
-		log.Println("The request method was GET")
-		_, _ = fmt.Fprintf(w, "Make a post request to this endpoint to calc some forces!")
-		fmt.Println(treeindex)
-
-	} else {
-		log.Println("The request method was POST")
-
-		// find out if the tree is all ready cached, if not, cache it
-		if isCached(treeindex) == false {
-			log.Println("[ ! ] The tree is not in local cache, requesting it from the database")
-
-			// make a http-post request to the databse requesting the tree
-			requesturl := fmt.Sprintf("http://%s/dumptree/%d", "db", treeindex)
-			log.Println("[   ] Requesting the tree from the database")
-			resp, err := http.Get(requesturl)
-			if err != nil {
-				panic(err)
-			}
-			log.Println("[   ] No error occurred!")
-			defer resp.Body.Close()
-
-			body, readerr := ioutil.ReadAll(resp.Body)
-			if readerr != nil {
-				panic(readerr)
-			}
-
-			log.Println("[   ] Unmarshaling the tree and storing it the treeArray")
-			tree := &structs.Node{}
-			jsonUnmarshalErr := json.Unmarshal(body, tree)
-			if jsonUnmarshalErr != nil {
-				panic(jsonUnmarshalErr)
-			}
-			log.Println("[   ] No error occurred!")
-			treeArray = append(treeArray, tree)
-		}
-
-		log.Println("[   ] Getting the star values from the post form")
-		// get the star the forces should be calculated on
-		x, _ := strconv.ParseFloat(r.PostFormValue("x"), 64)
-		y, _ := strconv.ParseFloat(r.PostFormValue("y"), 64)
-		vx, _ := strconv.ParseFloat(r.PostFormValue("vx"), 64)
-		vy, _ := strconv.ParseFloat(r.PostFormValue("vy"), 64)
-		m, _ := strconv.ParseFloat(r.PostFormValue("m"), 64)
-		theta, _ := strconv.ParseFloat(r.PostFormValue("theta"), 64)
-
-		log.Println("[   ] Simulator container calcallforces got these values: ")
-		log.Printf("(x: %f, y: %f, vx: %f, vy: %f, m: %f, theta: %f)\n", x, y, vx, vy, m, theta)
-		_, _ = fmt.Fprintf(w, "calculating forces...\n")
-		_, _ = fmt.Fprintf(w, "Simu here, calculating the forces acting on the star (%f, %f)", x, y)
-
-		star := structs.Star2D{
-			C: structs.Vec2{
-				X: x,
-				Y: y,
-			},
-			V: structs.Vec2{
-				X: vx,
-				Y: vy,
-			},
-			M: m,
-		}
-
-		// iterate over the tree using Barnes-Hut to determine if the the force should be calculated or not
-		log.Printf("[   ] Calculating the forces (%v, *): ", star)
-
-		log.Println(treeArray[treeindex].GenForestTree(treeArray[treeindex]))
-
-		force := treeArray[treeindex].CalcAllForces(star, theta)
-		log.Println("[   ] Done Calculating the forces!")
-		log.Printf("[   ] The force acting on star %v is %v", star, force)
-
-		_, _ = fmt.Fprintf(w, "The force acting on star %v is %v", star, force)
-		writefilerr := ioutil.WriteFile("out.txt", []byte(fmt.Sprintf("%v, %v", star, force)), 0644)
-		if writefilerr != nil {
-			panic(writefilerr)
-		}
-	}
-
-	starsProcessed += 1
 }
 
 // isCached returns true if the tree with the given treeindex is cached and false if not
@@ -176,9 +50,32 @@ func isCached(treeindex int64) bool {
 	}
 }
 
-// metricHandler returns a list of the simulators metrics
-func metricHandler(w http.ResponseWriter, r *http.Request) {
-	_, _ = fmt.Fprintf(w, "stars_processed %d", starsProcessed)
+func cache(treeindex int64) {
+	log.Println("[ ! ] The tree is not in local cache, requesting it from the database")
+
+	// make a http-post request to the databse requesting the tree
+	requesturl := fmt.Sprintf("http://db/dumptree/%d", treeindex)
+	log.Println("[   ] Requesting the tree from the database")
+	resp, err := http.Get(requesturl)
+	if err != nil {
+		panic(err)
+	}
+	log.Println("[   ] No error occurred!")
+	defer resp.Body.Close()
+
+	body, readerr := ioutil.ReadAll(resp.Body)
+	if readerr != nil {
+		panic(readerr)
+	}
+
+	log.Println("[   ] Unmarshaling the tree and storing it the treeArray")
+	tree := &structs.Node{}
+	jsonUnmarshalErr := json.Unmarshal(body, tree)
+	if jsonUnmarshalErr != nil {
+		panic(jsonUnmarshalErr)
+	}
+	log.Println("[   ] No error occurred!")
+	treeArray = append(treeArray, tree)
 }
 
 // pushMetrics pushes the metrics to the given host
@@ -200,8 +97,8 @@ func pushMetrics(host string) {
 		if err != nil {
 			fmt.Printf("Cound not make a POST request to %s", requestURL)
 		}
-		log.Printf("Updating the metrics on %s", requestURL)
-		log.Printf("key=starsProcessed{hostname=\"%s\"}&value=%d", hostname, starsProcessed)
+		log.Printf("[metrics] Updating the metrics on %s", requestURL)
+		log.Printf("[metrics] key=starsProcessed{hostname=\"%s\"}&value=%d", hostname, starsProcessed)
 
 		defer resp.Body.Close()
 
@@ -210,41 +107,93 @@ func pushMetrics(host string) {
 	}
 }
 
-// randomUpdateStarsProcessed is a test function intended to run in an own go-method. It randomly increases the
-// starsProcessed counter faking actual calculations.
-func randomUpdateStarsProcessed() {
+// processstars processes stars as long as the sun is shining!
+func processstars(url string) {
 
-	// create a new random source to get the random values from
-	randomSource := rand.New(rand.NewSource(time.Now().UnixNano()))
-
-	// increase the starsProcessed counter and wait a random amount of time in the interval [0, 10)
+	// infinitely get stars and calculate the forces acting on them
 	for {
-		starsProcessed += 1
-		fmt.Printf("Updated starsprocessed: %d\n", starsProcessed)
 
-		// sleep for a random time
-		randomInt := randomSource.Intn(10)
-		time.Sleep(time.Duration(randomInt) * time.Second)
+		log.Println("[   ] Getting a star from the manager")
+		// make a request to the given url and get the stargalaxy
+		resp, err := http.Get(url)
+		if err != nil {
+			fmt.Println("PANIC")
+			panic(err)
+		}
+		defer resp.Body.Close()
+		log.Println("[   ] Done")
+
+		// read the response containing a list of all stars in json format
+		log.Println("[   ] Reading the content")
+		body, err := ioutil.ReadAll(resp.Body)
+		log.Println("[   ] Done")
+
+		// if the response body is not a "Bad Gateway", continue.
+		// This problem occurs, when the manager hasn't got enough stars
+		if string(body) != "Bad Gateway" {
+			stargalaxy := &structs.Stargalaxy{}
+
+			// unmarshal the stargalaxy
+			log.Println("[   ] Unmarshaling the stargalaxy")
+			unmarshalErr := json.Unmarshal(body, stargalaxy)
+			if unmarshalErr != nil {
+				panic(unmarshalErr)
+			}
+			log.Println("[   ] Done")
+			log.Printf("[Star] (%f, %f)", stargalaxy.Star.C.X, stargalaxy.Star.C.Y)
+
+			// if the galaxy is not cached yet, cache it
+			log.Println("[   ] Testing is the galaxy is cached or not")
+			if isCached(stargalaxy.Index) == false {
+				log.Println("[   ] It is not -> caching")
+				cache(stargalaxy.Index)
+			}
+			log.Println("[   ] Done")
+
+			log.Println("[   ] Calculating the forces acting")
+			// calculate the forces acting inbetween all the stars in the galaxy
+			star := stargalaxy.Star
+			galaxyindex := stargalaxy.Index
+
+			calcallforces(star, galaxyindex)
+
+			log.Println("[   ] Done")
+
+			// insert the "new" star into the next timestep
+
+			log.Println("[   ] Calculating the new position")
+			log.Println("[   ] TODO")
+
+			// increase the starProcessed counter
+			starsProcessed += 1
+
+			log.Println("[   ] Waiting 10 seconds...")
+			// time.Sleep(time.Second * 100)
+			log.Println("[   ] Done")
+		} else {
+			// Sleep a second and try again
+			time.Sleep(time.Second * 1)
+		}
+
 	}
+}
+
+// calcallforces calculates the forces acting on a given star using the given
+// treeindex to define which other stars are in the galaxy
+func calcallforces(star structs.Star2D, treeindex int64) {
+
+	// iterate over the tree using Barnes-Hut to determine if the the force should be calculated or not
+	log.Printf("[   ] Calculating the forces (%v, *): ", star)
+
+	force := treeArray[treeindex].CalcAllForces(star, theta)
+	log.Println("[   ] Done Calculating the forces!")
+	log.Printf("[FORCE] Force acting on star: %v \t -> %v", star, force)
 }
 
 func main() {
 	// start a go method pushing the metrics to the manager
 	log.Println("[   ] Starting the metric-pusher")
-	go pushMetrics("http://manager:80/metrics")
+	go pushMetrics("http://manager/metrics")
 
-	// randomly update the stars processed counter
-	go randomUpdateStarsProcessed()
-
-	router := mux.NewRouter()
-
-	router.HandleFunc("/", indexHandler).Methods("GET")
-	router.HandleFunc("/newpos", calcNewPos).Methods("POST")
-	router.HandleFunc("/initMassCenter", calcNewPos).Methods("POST")
-	router.HandleFunc("/calcallforces/{treeindex}", calcallforcesHandler).Methods("GET", "POST")
-
-	router.HandleFunc("/metrics", metricHandler).Methods("GET")
-
-	fmt.Println("[   ] Simulator Container up")
-	log.Fatal(http.ListenAndServe(":80", router))
+	processstars("http://manager/providestars/0")
 }
