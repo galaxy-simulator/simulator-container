@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"strconv"
+	"runtime"
 	"time"
 
 	"git.darknebu.la/GalaxySimulator/structs"
@@ -23,16 +23,7 @@ var (
 
 // calcNewPos calculates the new position of the star it receives via a POST request
 // TODO: Implement it
-func calcNewPos(w http.ResponseWriter, r *http.Request) {
-	// get the post parameters
-	x, _ := strconv.ParseFloat(r.PostFormValue("x"), 64)
-	y, _ := strconv.ParseFloat(r.PostFormValue("y"), 64)
-	vx, _ := strconv.ParseFloat(r.PostFormValue("vx"), 64)
-	vy, _ := strconv.ParseFloat(r.PostFormValue("vy"), 64)
-	m, _ := strconv.ParseFloat(r.PostFormValue("m"), 64)
-
-	log.Println("Simulator container calcNewPos got these values: ")
-	log.Printf("(x: %f, y: %f, vx: %f, vy: %f, m: %f)\n", x, y, vx, vy, m)
+func calcNewPos(force structs.Vec2) {
 }
 
 // isCached returns true if the tree with the given treeindex is cached and false if not
@@ -95,7 +86,7 @@ func pushMetrics(host string) {
 }
 
 // processstars processes stars as long as the sun is shining!
-func processstars(url string) {
+func processstars(url string, core int) {
 
 	// infinitely get stars and calculate the forces acting on them
 	for {
@@ -113,6 +104,8 @@ func processstars(url string) {
 		// if the response body is not a "Bad Gateway", continue.
 		// This problem occurs, when the manager hasn't got enough stars
 		if string(body) != "Bad Gateway" {
+			fmt.Printf("[%d]", core)
+
 			stargalaxy := &structs.Stargalaxy{}
 
 			// unmarshal the stargalaxy
@@ -123,23 +116,30 @@ func processstars(url string) {
 
 			// if the galaxy is not cached yet, cache it
 			if isCached(stargalaxy.Index) == false {
+				log.Println("[Caching]")
 				cache(stargalaxy.Index)
+				log.Println("[Done Caching!]")
 			}
 
 			// calculate the forces acting inbetween all the stars in the galaxy
 			star := stargalaxy.Star
 			galaxyindex := stargalaxy.Index
 
-			calcallforces(star, galaxyindex)
+			force := calcallforces(star, galaxyindex)
 
 			// calculate the new position
+			star.CalcNewPos(force, 1)
+
 			// insert the "new" star into the next timestep
+			insertStar(star, galaxyindex+1)
 
 			// increase the starProcessed counter
 			starsProcessed += 1
+			fmt.Printf("[%d][%d] Processed as star!\n", core, starsProcessed)
 
 			// time.Sleep(time.Second * 100)
 		} else {
+			fmt.Println("Could not get a star from the manager!")
 			// Sleep a second and try again
 			time.Sleep(time.Second * 1)
 		}
@@ -147,14 +147,17 @@ func processstars(url string) {
 	}
 }
 
+func insertStar(star structs.Star2D, galaxyindex int64) {
+	// if the galaxy does not exist yet, create it
+
+	// insert the star into the galaxy
+}
+
 // calcallforces calculates the forces acting on a given star using the given
 // treeindex to define which other stars are in the galaxy
-func calcallforces(star structs.Star2D, treeindex int64) {
-
-	// iterate over the tree using Barnes-Hut to determine if the the force should be calculated or not
-
+func calcallforces(star structs.Star2D, treeindex int64) structs.Vec2 {
 	force := treeArray[treeindex].CalcAllForces(star, theta)
-	log.Printf("[FORCE] Force acting on star: %v \t -> %v", star, force)
+	return force
 }
 
 func main() {
@@ -162,5 +165,12 @@ func main() {
 	log.Println("[   ] Starting the metric-pusher")
 	go pushMetrics("http://manager.nbg1.emile.space/metrics")
 
-	processstars("http://manager.nbg1.emile.space/providestars/0")
+	numCPU := runtime.NumCPU()
+
+	log.Printf("Starting %d go threads", numCPU)
+
+	for i := 0; i < numCPU-1; i++ {
+		go processstars("http://manager.nbg1.emile.space/providestars/0", i)
+	}
+	processstars("http://manager.nbg1.emile.space/providestars/0", 7)
 }
