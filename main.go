@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"runtime"
+	"strconv"
 	"time"
 
 	"git.darknebu.la/GalaxySimulator/structs"
@@ -149,8 +150,49 @@ func processstars(url string, core int) {
 
 func insertStar(star structs.Star2D, galaxyindex int64) {
 	// if the galaxy does not exist yet, create it
+	requrl := "http://db.nbg1.emile.space/nrofgalaxies"
+	resp, err := http.Get(requrl)
+	if err != nil {
+		panic(err)
+	}
+	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll(resp.Body)
+	currentAmounfOfGalaxies, _ := strconv.ParseInt(string(body), 10, 64)
+
+	// if there is no galaxy to insert the star into, create it
+	if currentAmounfOfGalaxies <= galaxyindex {
+
+		// create the new galaxy using a post request
+		requestURL := "http://db.nbg1.emile.space/new"
+		resp, err := http.PostForm(requestURL,
+			url.Values{
+				"w": {fmt.Sprintf("%d", 1000000000)},
+			},
+		)
+		if err != nil {
+			fmt.Printf("Cound not make a POST request to %s", requestURL)
+		}
+		defer resp.Body.Close()
+	}
 
 	// insert the star into the galaxy
+
+	// create the new galaxy using a post request
+	requestURL := fmt.Sprintf("http://db.nbg1.emile.space/insert/%d", galaxyindex)
+	resp, err = http.PostForm(requestURL,
+		url.Values{
+			"x":  {fmt.Sprintf("%d", star.C.X)},
+			"y":  {fmt.Sprintf("%d", star.C.Y)},
+			"vx": {fmt.Sprintf("%d", star.V.X)},
+			"vy": {fmt.Sprintf("%d", star.V.Y)},
+			"m":  {fmt.Sprintf("%d", star.M)},
+		},
+	)
+	if err != nil {
+		fmt.Printf("Cound not make a POST request to %s", requestURL)
+	}
+	defer resp.Body.Close()
 }
 
 // calcallforces calculates the forces acting on a given star using the given
