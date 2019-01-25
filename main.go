@@ -17,15 +17,11 @@ import (
 
 var (
 	// store a copy of the tree locally
-	treeArray      []*structs.Node
-	starsProcessed int
-	theta          = 0.1
+	treeArray        []*structs.Node
+	starsProcessed   int
+	theta            = 0.1
+	currentlyCaching = false
 )
-
-// calcNewPos calculates the new position of the star it receives via a POST request
-// TODO: Implement it
-func calcNewPos(force structs.Vec2) {
-}
 
 // isCached returns true if the tree with the given treeindex is cached and false if not
 func isCached(treeindex int64) bool {
@@ -37,7 +33,10 @@ func isCached(treeindex int64) bool {
 	}
 }
 
+// cache caches the tree with the given index
 func cache(treeindex int64) {
+	currentlyCaching = true
+
 	// make a http-post request to the databse requesting the tree
 	requesturl := fmt.Sprintf("http://db.nbg1.emile.space/dumptree/%d", treeindex)
 	resp, err := http.Get(requesturl)
@@ -56,6 +55,13 @@ func cache(treeindex int64) {
 	if jsonUnmarshalErr != nil {
 		panic(jsonUnmarshalErr)
 	}
+
+	// if the treeArray is not long enough, fill it
+	for int(treeindex) > len(treeArray) {
+		emptyNode := structs.NewNode(structs.NewBoundingBox(structs.NewVec2(0, 0), 10))
+		treeArray = append(treeArray, emptyNode)
+	}
+
 	treeArray = append(treeArray, tree)
 }
 
@@ -92,6 +98,8 @@ func processstars(url string, core int) {
 	// infinitely get stars and calculate the forces acting on them
 	for {
 
+		log.Println("------------------------------------------")
+
 		// make a request to the given url and get the stargalaxy
 		resp, err := http.Get(url)
 		if err != nil {
@@ -105,8 +113,6 @@ func processstars(url string, core int) {
 		// if the response body is not a "Bad Gateway", continue.
 		// This problem occurs, when the manager hasn't got enough stars
 		if string(body) != "Bad Gateway" {
-			fmt.Printf("[%d]", core)
-
 			stargalaxy := &structs.Stargalaxy{}
 
 			// unmarshal the stargalaxy
@@ -116,7 +122,7 @@ func processstars(url string, core int) {
 			}
 
 			// if the galaxy is not cached yet, cache it
-			if isCached(stargalaxy.Index) == false {
+			if isCached(stargalaxy.Index) == false || currentlyCaching == false {
 				log.Println("[Caching]")
 				cache(stargalaxy.Index)
 				log.Println("[Done Caching!]")
@@ -126,17 +132,21 @@ func processstars(url string, core int) {
 			star := stargalaxy.Star
 			galaxyindex := stargalaxy.Index
 
+			log.Printf("[+++] %v\n", star)
+
 			force := calcallforces(star, galaxyindex)
 
 			// calculate the new position
-			star.CalcNewPos(force, 1)
+			star.CalcNewPos(force, 1e15)
+
+			log.Printf("[+++] %v\n", star)
 
 			// insert the "new" star into the next timestep
 			insertStar(star, galaxyindex+1)
 
 			// increase the starProcessed counter
 			starsProcessed += 1
-			fmt.Printf("[%d][%d] Processed as star!\n", core, starsProcessed)
+			log.Printf("[%d][%d] Processed as star!\n", core, starsProcessed)
 
 			// time.Sleep(time.Second * 100)
 		} else {
@@ -148,7 +158,10 @@ func processstars(url string, core int) {
 	}
 }
 
+// insertStar inserts the given star into the tree with the given index
 func insertStar(star structs.Star2D, galaxyindex int64) {
+	log.Println("[ i ] Inserting the star into the galaxy")
+
 	// if the galaxy does not exist yet, create it
 	requrl := "http://db.nbg1.emile.space/nrofgalaxies"
 	resp, err := http.Get(requrl)
@@ -160,8 +173,11 @@ func insertStar(star structs.Star2D, galaxyindex int64) {
 	body, err := ioutil.ReadAll(resp.Body)
 	currentAmounfOfGalaxies, _ := strconv.ParseInt(string(body), 10, 64)
 
+	log.Printf("[ i ] Current amount of galaxies: %d\n", currentAmounfOfGalaxies)
+
 	// if there is no galaxy to insert the star into, create it
 	if currentAmounfOfGalaxies <= galaxyindex {
+		log.Println("[ i ] There is no galaxy to insert into -> creating one")
 
 		// create the new galaxy using a post request
 		requestURL := "http://db.nbg1.emile.space/new"
@@ -172,32 +188,47 @@ func insertStar(star structs.Star2D, galaxyindex int64) {
 		)
 		if err != nil {
 			fmt.Printf("Cound not make a POST request to %s", requestURL)
+			body, _ := ioutil.ReadAll(resp.Body)
+			fmt.Printf(string(body))
 		}
 		defer resp.Body.Close()
+
+		log.Println("[ i ] Done creating the new galaxy")
 	}
 
 	// insert the star into the galaxy
 
+	log.Printf("[ i ] Inserting the star into galaxy nr. %d\n", galaxyindex)
+
 	// create the new galaxy using a post request
 	requestURL := fmt.Sprintf("http://db.nbg1.emile.space/insert/%d", galaxyindex)
-	resp, err = http.PostForm(requestURL,
+	resppost, errpost := http.PostForm(requestURL,
 		url.Values{
-			"x":  {fmt.Sprintf("%d", star.C.X)},
-			"y":  {fmt.Sprintf("%d", star.C.Y)},
-			"vx": {fmt.Sprintf("%d", star.V.X)},
-			"vy": {fmt.Sprintf("%d", star.V.Y)},
-			"m":  {fmt.Sprintf("%d", star.M)},
+			"x":  {fmt.Sprintf("%f", star.C.X)},
+			"y":  {fmt.Sprintf("%f", star.C.Y)},
+			"vx": {fmt.Sprintf("%f", star.V.X)},
+			"vy": {fmt.Sprintf("%f", star.V.Y)},
+			"m":  {fmt.Sprintf("%f", star.M)},
 		},
 	)
-	if err != nil {
-		fmt.Printf("Cound not make a POST request to %s", requestURL)
+	if errpost != nil {
+		panic(errpost)
+		// handle error
 	}
-	defer resp.Body.Close()
+	defer resppost.Body.Close()
+
+	log.Printf("[<<<] \t %v", string(requestURL))
+	log.Printf("[<<<] \t %v", string(body))
+
+	log.Println("[ i ] Done inserting the star")
 }
 
 // calcallforces calculates the forces acting on a given star using the given
 // treeindex to define which other stars are in the galaxy
 func calcallforces(star structs.Star2D, treeindex int64) structs.Vec2 {
+	fmt.Printf("star: %v", star)
+	fmt.Printf("treeindex: %d", treeindex)
+	fmt.Printf("len(treeArray): %d", len(treeArray))
 	force := treeArray[treeindex].CalcAllForces(star, theta)
 	return force
 }
@@ -211,8 +242,8 @@ func main() {
 
 	log.Printf("Starting %d go threads", numCPU)
 
-	for i := 0; i < numCPU-1; i++ {
-		go processstars("http://manager.nbg1.emile.space/providestars/0", i)
-	}
+	// for i := 0; i < numCPU-1; i++ {
+	// 	go processstars("http://manager.nbg1.emile.space/providestars/0", i)
+	// }
 	processstars("http://manager.nbg1.emile.space/providestars/0", 7)
 }
