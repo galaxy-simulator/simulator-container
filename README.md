@@ -1,3 +1,4 @@
+[![Go Report Card](https://goreportcard.com/badge/git.darknebu.la/GalaxySimulator/simulator-container)](https://goreportcard.com/report/git.darknebu.la/GalaxySimulator/simulator-container)
 # simulator-container
 
 Docker-container simulating the new position of a given set of stars.
